@@ -9,7 +9,8 @@ from matriisi.http import MatrixEventRoomMessage
 from matriisi.identifier import Identifier
 
 if TYPE_CHECKING:
-    from matriisi.dataclasses.room import JoinedRoom
+    from matriisi.dataclasses.member import RoomMember
+    from matriisi.dataclasses.room import Room
     from matriisi.robotics.roboclient import RoboClient
 
 
@@ -19,10 +20,8 @@ class Message(EventWrapper[MatrixEventRoomMessage]):
     Wraps a single ``m.room.message`` event/
     """
 
-    _client: RoboClient = attr.ib()
-
     #: The room this message was sent in.
-    room: JoinedRoom = attr.ib()
+    room: Room = attr.ib()
 
     @property
     def sender_id(self) -> Identifier:
@@ -31,6 +30,16 @@ class Message(EventWrapper[MatrixEventRoomMessage]):
         """
 
         return self.event.sender
+
+    @property
+    def sender(self) -> RoomMember:
+        """
+        :return: The :class:`.RoomMember` of this member.
+        """
+
+        evt = self.room.member(self.sender_id)
+        assert evt, f"room has non-existent sender {self.sender_id}?"
+        return evt
 
     @property
     def raw_content(self) -> str:

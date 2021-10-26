@@ -6,9 +6,7 @@ from typing import AsyncContextManager, Type
 
 import trio
 
-from matriisi.dataclasses.room import JoinedRoom, Room
-from matriisi.http import MatrixHttp, MatrixSync, create_http_client
-from matriisi.id_dict import IdentifierDict
+from matriisi.http import MatrixHttp, create_http_client
 from matriisi.identifier import Identifier
 from matriisi.robotics.event import Event
 from matriisi.robotics.event.bus import EventBus, open_event_bus
@@ -32,8 +30,10 @@ class RoboClient(object):
 
         self.http_client = http_client
         self._event_bus = event_bus
-        self._sync_filter = None
-        self._state = MatrixState(self, self._event_bus._write)
+        self._sync_filter = "{}"
+
+        #: The shared state for this client.
+        self.state = MatrixState(self, self._event_bus._write)
 
         # these properties are set in run() usually.
         #: The UID of this client.
@@ -50,15 +50,14 @@ class RoboClient(object):
         self.uid = whoami.user_id
 
         logger.info(f"Logged in user is {self.uid}")
-        self._sync_filter = json.dumps({
-            "room": {
-                "ephemeral": {"types": []},
-                "timeline": {}
-            }
-        })
+        self._sync_filter = json.dumps(
+            {"room": {"ephemeral": {"types": []}, "timeline": {"limit": 50}}}
+        )
 
         last_sync = await self.http_client.sync()
-        await self._state.sync(last_sync, initial_batch=True)
+        await self.state.sync(last_sync, initial_batch=True)
+
+        # todo: send initial sync event
 
         async with trio.open_nursery() as nursery:
             nursery.start_soon(self._sync_loop)
@@ -70,17 +69,17 @@ class RoboClient(object):
         """
 
         while True:
-            with trio.move_on_after(61) as scope:
+            with trio.move_on_after(31) as scope:
                 logger.debug("Synchronising with the server...")
                 last_sync = await self.http_client.sync(
-                    since=self._state.next_batch, timeout=60 * 1000, filter=self.SYNC_FILTER
+                    since=self.state.next_batch, timeout=30 * 1000, filter=self._sync_filter
                 )
 
             # TODO: Only do this a few times.
             if scope.cancel_called:
                 logger.warning("Server sync timed out, skipping sync phase")
             else:
-                await self._state.sync(last_sync, initial_batch=False)
+                await self.state.sync(last_sync, initial_batch=False)
 
     def event(self, type: Type[Event]):
         """

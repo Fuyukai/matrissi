@@ -1,7 +1,9 @@
 import attr
+from trio.lowlevel import checkpoint
 
 from matriisi.dataclasses.message import Message
 from matriisi.dataclasses.room import Room
+from matriisi.http import MatrixEventRoomMessage
 from matriisi.robotics.event.base import Event
 
 
@@ -18,3 +20,29 @@ class MessageEvent(Event):
 
     #: The message object for this event.
     content: Message = attr.ib()
+
+
+@attr.s(frozen=True, slots=True)
+class MessageReplyEvent(MessageEvent):
+    """
+    Event for when a message is replied to.
+    """
+
+    async def replied_to_message(self) -> Message:
+        """
+        Gets the message that was replied to.
+        """
+        client = self.room._client
+
+        for evt in client.state.cached_events:
+            if evt.event_id == self.content.event.content.relates_to.replying_to:
+                await checkpoint()
+                return Message(evt, self.room)
+
+        event = await client.http_client.get_single_event(
+            room_id=self.room.id,
+            event_id=self.content.event.content.relates_to.replying_to,
+            event_type=MatrixEventRoomMessage,
+        )
+
+        return Message(event, self.room)

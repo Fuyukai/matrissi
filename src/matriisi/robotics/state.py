@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, List, Optional
+from functools import partial
+from io import StringIO
+from typing import TYPE_CHECKING, Deque, List, Optional, cast
 
 import attr
+from prettyprinter import pprint
 from trio import MemorySendChannel
 
 from matriisi.dataclasses.message import Message
-from matriisi.dataclasses.room import JoinedRoom
+from matriisi.dataclasses.room import JoinedRoom, Room
 from matriisi.http import (
+    MatrixEventRoomMember,
     MatrixEventRoomMessage,
     MatrixJoinedRoom,
     MatrixRoomBaseEvent,
@@ -19,7 +23,13 @@ from matriisi.http import (
 )
 from matriisi.id_dict import IdentifierDict
 from matriisi.identifier import Identifier
-from matriisi.robotics.event import Event, MessageEvent, RoomJoinedEvent
+from matriisi.robotics.event import (
+    Event,
+    MessageEvent,
+    MessageReplyEvent,
+    RoomJoinedEvent,
+)
+from matriisi.robotics.event.room import RoomMemberJoinedEvent
 
 if TYPE_CHECKING:
     from matriisi.robotics.roboclient import RoboClient
@@ -40,6 +50,9 @@ class MatrixState(object):
     #: The channel to dispatch events over.
     event_channel: MemorySendChannel[Event] = attr.ib()
 
+    #: A deque of cached events.
+    cached_events: Deque[MatrixRoomEvent] = attr.ib(factory=partial(deque, maxlen=1000))
+
     #: The mapping of rooms data.
     rooms: IdentifierDict[JoinedRoom] = attr.ib(factory=IdentifierDict)
 
@@ -47,14 +60,52 @@ class MatrixState(object):
     next_batch: Optional[str] = attr.ib(default=None)
 
     def _handle_m_room_message(
-        self, snapshot: JoinedRoom, event: MatrixRoomEvent[MatrixEventRoomMessage]
+        self, before: Room, snapshot: JoinedRoom, event: MatrixRoomEvent[MatrixEventRoomMessage]
     ):
         """
         Handles a new room message.
         """
 
-        message = Message(event=event, client=self.roboclient, room=snapshot)
+        message = Message(event=event, room=snapshot)
+
+        reply = event.content.relates_to.replying_to
+        if reply is not None:
+            return MessageReplyEvent(snapshot, message)
+
         return MessageEvent(snapshot, message)
+
+    def _handle_m_room_member(
+        self, before: Room, snapshot: Room, event: MatrixRoomEvent[MatrixEventRoomMember]
+    ):
+        """
+        Handles a member event.
+        """
+
+        # this requires a whole bunch of heuristics to detect what actually changed
+        previous_event = before.find_event(
+            "m.room.member", str(event.sender), MatrixEventRoomMember
+        )
+        if previous_event is None:
+            # this one is easy, member joined
+            return RoomMemberJoinedEvent(cast(JoinedRoom, snapshot), event.sender)
+
+        # check membership changes
+        if previous_event.content.membership != event.content.membership:
+            pass
+
+        stream = StringIO()
+        pprint(previous_event, stream=stream)
+        prev = stream.getvalue()
+
+        stream = StringIO()
+        pprint(event, stream=stream)
+        new = stream.getvalue()
+
+        logger.warning(
+            "all heuristics failed when parsing member event. this is definitely a bug!\n\n"
+            f"previous: {prev}\n"
+            f"new: {new}"
+        )
 
     async def _backfill_events(self, room_id: Identifier, prev_batch: str, last_known_id: str):
         """
@@ -129,6 +180,9 @@ class MatrixState(object):
 
         # replay events onto the room
         for evt in matrix_events:
+            self.cached_events.append(evt)
+
+            before = room._snapshot()
             if isinstance(evt, MatrixRoomBaseStateEvent):
                 # noinspection PyProtectedMember
                 room._update_state(evt)
@@ -138,9 +192,11 @@ class MatrixState(object):
                 event_handler = getattr(self, f"_handle_{evt_type}", None)
 
                 if event_handler:
-                    # noinspection PyProtectedMember
                     snapshot = room._snapshot()
-                    events.append(event_handler(snapshot, evt))
+                    result = event_handler(before, snapshot, evt)
+
+                    if result is not None:
+                        events.append(result)
 
         return events
 

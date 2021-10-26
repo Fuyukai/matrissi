@@ -10,16 +10,26 @@ import secrets
 import sys
 from importlib.metadata import version
 from json import JSONDecodeError
-from typing import Any, AsyncContextManager, Callable, List, Mapping, Optional, cast
+from typing import (
+    Any,
+    AsyncContextManager,
+    Callable,
+    List,
+    Mapping,
+    Optional,
+    Type,
+    TypeVar,
+    cast,
+)
 
 import httpx
 import trio
 from cattr import GenConverter
 from httpx import URL, AsyncClient
-from prettyprinter import cpprint
 from trio.lowlevel import checkpoint
 
 from matriisi.http.httpevents import (
+    RELATION_KEYS,
     MatrixEventRoomCanonicalAlias,
     MatrixEventRoomCreate,
     MatrixEventRoomCreatePreviousRoom,
@@ -37,6 +47,7 @@ from matriisi.http.httpevents import (
     MatrixRoomMemberMembership,
     MatrixRoomStateEvent,
     MatrixUnknownEventContent,
+    RelatesToRelation,
 )
 from matriisi.http.structs import (
     MatrixJoinedRoom,
@@ -56,6 +67,8 @@ from matriisi.utils import asynccontextmanager
 logger = logging.getLogger(__name__)
 
 converter = GenConverter(prefer_attrib_converters=True)
+
+_EVT_TYPE = TypeVar("_EVT_TYPE", bound=MatrixHttpEventContent)
 
 
 class MatrixErrorCode(str, enum.Enum):
@@ -182,13 +195,13 @@ class MatrixHttp(object):
         alias = content.get("alias", None)
         aliases = content.get("alt_aliases", [])
 
-        return MatrixEventRoomCanonicalAlias(alias, aliases)
+        return MatrixEventRoomCanonicalAlias(alias=alias, alt_aliases=aliases)
 
     @staticmethod
     def _parse_room_join_rules(content):
         jr = MatrixRoomJoinRule(content["join_rule"])
 
-        return MatrixEventRoomJoinRules(jr)
+        return MatrixEventRoomJoinRules(join_rule=jr)
 
     @staticmethod
     def _parse_room_member(content):
@@ -208,11 +221,11 @@ class MatrixHttp(object):
 
     @staticmethod
     def _parse_room_name(content):
-        return MatrixEventRoomName(content["name"])
+        return MatrixEventRoomName(name=content["name"])
 
     @staticmethod
     def _parse_room_topic(content):
-        return MatrixEventRoomTopic(content["topic"])
+        return MatrixEventRoomTopic(topic=content["topic"])
 
     def _parse_matrix_event(self, type_: str, event_content) -> MatrixHttpEventContent:
         """
@@ -236,7 +249,7 @@ class MatrixHttp(object):
 
         else:
             logger.warning(f"Encountered unknown built-in event type {type_}")
-            return MatrixUnknownEventContent(event_content)
+            return MatrixUnknownEventContent(data=event_content)
 
         return evt
 
@@ -247,7 +260,7 @@ class MatrixHttp(object):
         converter = self._custom_converters.get(type_)
         if converter is None:
             logger.debug(f"Encountered unknown event {type_}, skipping")
-            return MatrixUnknownEventContent(event_content)
+            return MatrixUnknownEventContent(data=event_content)
 
         return converter(event_content)
 
@@ -260,6 +273,28 @@ class MatrixHttp(object):
         else:
             return self._parse_custom_event(type_, event_content)
 
+    def _parse_relates_to(self, data):
+        """
+        Parses the relation data.
+        """
+        for key in RELATION_KEYS:
+            relations_list = data.get(key, [])
+            if relations_list:
+                relations_list = [RelatesToRelation(**i) for i in relations_list]
+
+        relations_dict = data.get("m.relates_to", {})
+        # stupid dumb bastard evil format
+        if "rel_type" in relations_dict:
+            relations_dict = {relations_dict["rel_type"]: relations_dict["event_id"]}
+        else:
+            relations_dict = {
+                k: RelatesToRelation(rel_type=k, event_id=v["event_id"])
+                for (k, v) in relations_dict.items()
+            }
+
+        # false positive warning.
+        return relations_list, relations_dict
+
     def _parse_room_event(self, full_event, *, override_room_id: str = None) -> MatrixRoomBaseEvent:
         """
         Parses a room event.
@@ -270,7 +305,14 @@ class MatrixHttp(object):
         # stripped state events don't have event_id or origin_server_ts
         is_full_event = "event_id" in full_event
 
+        content = full_event["content"]
+        relations, relates_to = self._parse_relates_to(content)
+
         content = self._parse_event_content(type_, full_event["content"])
+        # awkward workaround to not have to pass relates_to to every content
+        content.relates_to.relates_to = relates_to
+        content.relates_to.relations = relations
+
         # sync state events don't have this...
         if override_room_id:
             room_id = override_room_id
@@ -324,7 +366,10 @@ class MatrixHttp(object):
         type_ = data["type"]
         content = data["content"]
 
-        return MatrixHttpEvent(type_, self._parse_event_content(type_, content))
+        return MatrixHttpEvent(
+            type_,
+            self._parse_event_content(type_, content),
+        )
 
     def _parse_room_timeline(self, data, room_id: str) -> MatrixTimeline:
         """
@@ -593,6 +638,28 @@ class MatrixHttp(object):
             next_batch,
             account_data=account_data,
             room_data=rooms,
+        )
+
+    async def get_single_event(
+        self,
+        room_id: IDENTIFIER_TYPE,
+        event_id: str,
+        *,
+        event_type: Type[MatrixHttpEventContent] = None,
+    ) -> MatrixRoomEvent[_EVT_TYPE]:
+        """
+        Gets a single event from a room.
+
+        :param room_id: The room to download the event from.
+        :param event_id: The ID of the event.
+        :param event_type: The type of this event.
+        :return: A single event object.
+        """
+        path = f"r0/rooms/{room_id}/event/{event_id}"
+
+        data = await self.matrix_request("GET", path)
+        return cast(
+            MatrixRoomEvent[_EVT_TYPE], self._parse_room_event(data, override_room_id=room_id)
         )
 
     async def get_events(

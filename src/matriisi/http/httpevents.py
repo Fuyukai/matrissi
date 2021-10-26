@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Generic, List, Optional, TypeVar, Union
+from typing import Generic, List, Mapping, Optional, TypeVar, Union
 
 import attr
 
@@ -25,9 +25,76 @@ __all__ = (
     "MatrixRoomJoinRule",
     "MatrixEventRoomJoinRules",
     "MatrixEventRoomTopic",
+    "MatrixRelatesTo",
+    "RelatesToRelation",
 )
 
 CONTENT_TYPE = TypeVar("CONTENT_TYPE")
+
+RELATION_KEYS = (
+    "m.relations",
+    "im.nheko.relations.v1.relations",
+)
+
+REPLY_KEYS = (
+    "m.in_reply_to",
+    "im.nheko.relations.v1.in_reply_to",
+)
+
+
+@attr.s(frozen=True, slots=True)
+class RelatesToRelation:
+    """
+    A single relation between messages.
+    """
+
+    #: The relation type, e.g. "m.replaces".
+    rel_type: str = attr.ib()
+
+    #: The ID of the event this message was related to.
+    event_id: str = attr.ib()
+
+    #: The aggregration key.
+    key: Optional[str] = attr.ib(default=None)
+
+
+@attr.s(frozen=False, slots=True)
+class MatrixRelatesTo:
+    """
+    Wrapper type for known 'relates to' data. Transparently wraps over both the old and new format.
+    """
+
+    # When/If 3051 is merged, strip `relates_to`.
+    relations: List[RelatesToRelation] = attr.ib(factory=list)
+
+    relates_to: Mapping[str, RelatesToRelation] = attr.ib(factory=dict)
+
+    def for_type(self, relation: str) -> Optional[RelatesToRelation]:
+        """
+        Finds a relation between two messages based on the ``rel_type``.
+        """
+
+        try:
+            return self.relates_to[relation]
+        except KeyError:
+            for k, v in self.relates_to.items():
+                if k == relation:
+                    return v
+
+        return None
+
+    @property
+    def replying_to(self) -> Optional[str]:
+        """
+        :return: The event ID
+        """
+
+        for value in REPLY_KEYS:
+            value = self.for_type(value)
+            if value:
+                return value.event_id
+
+        return None
 
 
 @attr.s(frozen=True, slots=True)
@@ -36,7 +103,8 @@ class MatrixHttpEventContent:
     The base class for known event contents.
     """
 
-    pass
+    #: The relation data for this event.
+    relates_to: MatrixRelatesTo = attr.ib(factory=MatrixRelatesTo)
 
 
 @attr.s(frozen=True, slots=True)
@@ -45,7 +113,7 @@ class MatrixUnknownEventContent(MatrixHttpEventContent):
     Class used when an event is unknown.
     """
 
-    data: dict = attr.ib()
+    data: dict = attr.ib(kw_only=True)
 
 
 @attr.s(frozen=True, slots=False)
@@ -112,10 +180,10 @@ class MatrixRoomStateEvent(MatrixRoomEvent[CONTENT_TYPE], MatrixRoomBaseStateEve
 @attr.s(frozen=True, slots=True)
 class MatrixEventRoomCreatePreviousRoom(MatrixHttpEventContent):
     #: The last known event ID for the previous room.
-    event_id: str = attr.ib()
+    event_id: str = attr.ib(kw_only=True)
 
     #: The ID of the old room.
-    room_id: Identifier = attr.ib(converter=Identifier.parse)
+    room_id: Identifier = attr.ib(converter=Identifier.parse, kw_only=True)
 
 
 @attr.s(frozen=True, slots=True)
@@ -125,16 +193,16 @@ class MatrixEventRoomCreate(MatrixHttpEventContent):
     """
 
     #: The creator of this room.
-    creator: Identifier = attr.ib(converter=Identifier.parse)
+    creator: Identifier = attr.ib(converter=Identifier.parse, kw_only=True)
 
     #: If users on other serveers can join this room.
-    m_federate: bool = attr.ib(default=True)
+    m_federate: bool = attr.ib(default=True, kw_only=True)
 
     #: A reference to the previous room.
-    predecessor: Optional[MatrixEventRoomCreatePreviousRoom] = attr.ib(default=None)
+    predecessor: Optional[MatrixEventRoomCreatePreviousRoom] = attr.ib(default=None, kw_only=True)
 
     #: The room version of this room.
-    room_version: str = attr.ib(default="1")
+    room_version: str = attr.ib(default="1", kw_only=True)
 
 
 class MatrixRoomMemberMembership(enum.Enum):
@@ -156,19 +224,21 @@ class MatrixEventRoomMember(MatrixHttpEventContent):
     """
 
     #: The membership state for this event.
-    membership: MatrixRoomMemberMembership = attr.ib(converter=MatrixRoomMemberMembership)
+    membership: MatrixRoomMemberMembership = attr.ib(
+        converter=MatrixRoomMemberMembership, kw_only=True
+    )
 
     #: The avatar URL for the member.
-    avatar_url: Optional[str] = attr.ib(default=None)
+    avatar_url: Optional[str] = attr.ib(default=None, kw_only=True)
 
     # actual JSON name: displayname
     #: The display name for the member.
-    display_name: Optional[str] = attr.ib(default=None)
+    display_name: Optional[str] = attr.ib(default=None, kw_only=True)
 
     #: The reason for why membership has changed.
-    reason: Optional[str] = attr.ib(default=None)
+    reason: Optional[str] = attr.ib(default=None, kw_only=True)
 
-    is_direct: bool = attr.ib(default=False)
+    is_direct: bool = attr.ib(default=False, kw_only=True)
 
 
 @attr.s(frozen=True, slots=True)
@@ -178,13 +248,13 @@ class MatrixEventRoomMessage(MatrixHttpEventContent):
     """
 
     #: The textual representation of this message.
-    body: str = attr.ib()
+    body: str = attr.ib(kw_only=True)
 
     #: The type of this message.
-    type: str = attr.ib()
+    type: str = attr.ib(kw_only=True)
 
     #: The extra, specific data for this message.
-    extra_data: dict = attr.ib(factory=dict)
+    extra_data: dict = attr.ib(factory=dict, kw_only=True)
 
 
 @attr.s(frozen=True, slots=True)
@@ -194,10 +264,10 @@ class MatrixEventRoomCanonicalAlias(MatrixHttpEventContent):
     """
 
     #: The canonical alias for this room.
-    alias: Optional[str] = attr.ib()
+    alias: Optional[str] = attr.ib(kw_only=True)
 
     #: The list of alternative aliases for this room.
-    alt_aliases: List[str] = attr.ib(factory=list)
+    alt_aliases: List[str] = attr.ib(factory=list, kw_only=True)
 
 
 class MatrixRoomJoinRule(enum.Enum):
@@ -218,7 +288,7 @@ class MatrixEventRoomJoinRules(MatrixHttpEventContent):
     """
 
     #: The join rule for this event.
-    join_rule: MatrixRoomJoinRule = attr.ib(converter=MatrixRoomJoinRule)
+    join_rule: MatrixRoomJoinRule = attr.ib(converter=MatrixRoomJoinRule, kw_only=True)
 
 
 @attr.s(frozen=True, slots=True)
@@ -228,7 +298,7 @@ class MatrixEventRoomName(MatrixHttpEventContent):
     """
 
     #: The name of this room.
-    name: str = attr.ib()
+    name: str = attr.ib(kw_only=True)
 
 
 @attr.s(frozen=True, slots=True)
@@ -238,4 +308,4 @@ class MatrixEventRoomTopic(MatrixHttpEventContent):
     """
 
     #: The room's topic text.
-    topicc: str = attr.ib()
+    topic: str = attr.ib(kw_only=True)

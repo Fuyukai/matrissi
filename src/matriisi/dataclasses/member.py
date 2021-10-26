@@ -2,54 +2,38 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from matriisi.http.httpevents import MatrixEventRoomMember, MatrixRoomStateEvent
+import attr
+
+from matriisi.dataclasses.base import EventWrapper
+from matriisi.http import MatrixEventRoomMember
 from matriisi.identifier import Identifier
 
 if TYPE_CHECKING:
     from matriisi.dataclasses.room import Room
-    from matriisi.robotics.roboclient import RoboClient
 
 
-class RoomMember(object):
+@attr.s(slots=True)
+class RoomMember(EventWrapper[MatrixEventRoomMember]):
     """
     A single member in a single room.
     """
 
-    def __init__(
-        self, client: RoboClient, room: Room, event: MatrixRoomStateEvent[MatrixEventRoomMember]
-    ):
-        """
-        :param client: The :class:`.RoboClient` this member was found using.
-        :param id: The :class:`.Identifier` for the user.
-        :param room: The :class:`.Room` this member is in.
-        """
-
-        self._client = client
-
-        #: The Matrix event for this member.
-
-        #: The room this member is in.
-        self.room = room
+    #: The room this member is in.
+    room: Room = attr.ib()
 
     @property
-    def event(self) -> MatrixRoomStateEvent[MatrixEventRoomMember]:
+    def id(self) -> Identifier:
         """
-        :return: The event that defined this member.
+        :return: The :class:`.Identifier` for this member.
         """
-        evt = self.room.find_event("m.room.member", str(self.id), MatrixEventRoomMember)
-        assert evt, "room is missing event for this member?"
-
-        return evt
+        return self.event.sender
 
     @property
     def display_name(self) -> str:
         """
-        Gets the display name for this user.
+        :return: The calculated display name for this member.
         """
-        event = self.room.find_event("m.room.member", str(self.id), MatrixEventRoomMember)
-        assert event, "room is missing event for this member"
-
-        dn = event.content.display_name
+        dn = self.event.content.display_name
         if dn is None:
             return str(self.id)
 
@@ -60,7 +44,7 @@ class RoomMember(object):
                 for evt in self.room.find_all_events(
                     "m.room.member", content_type=MatrixEventRoomMember
                 )
-                if evt.content.display_name == event.content.display_name
+                if evt.content.display_name == self.event.content.display_name
             )
             == 1
         )

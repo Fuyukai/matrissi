@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from functools import partial
-from typing import Any, AsyncContextManager, Callable, Optional, Type, Awaitable
+from typing import Any, AsyncContextManager, Awaitable, Callable, Optional, Type
 
 import trio
 
