@@ -11,7 +11,7 @@ from prettyprinter import pprint
 from trio import MemorySendChannel
 
 from matriisi.dataclasses.message import Message
-from matriisi.dataclasses.room import JoinedRoom, Room
+from matriisi.dataclasses.room import Room
 from matriisi.http import (
     MatrixEventRoomMember,
     MatrixEventRoomMessage,
@@ -19,7 +19,8 @@ from matriisi.http import (
     MatrixRoomBaseEvent,
     MatrixRoomBaseStateEvent,
     MatrixRoomEvent,
-    MatrixSync,
+    MatrixRoomMemberMembership,
+    MatrixSync, MatrixHttpEvent,
 )
 from matriisi.id_dict import IdentifierDict
 from matriisi.identifier import Identifier
@@ -27,14 +28,33 @@ from matriisi.robotics.event import (
     Event,
     MessageEvent,
     MessageReplyEvent,
-    RoomJoinedEvent,
 )
-from matriisi.robotics.event.room import RoomMemberJoinedEvent
+from matriisi.robotics.event.room import (
+    RoomMemberBannedEvent,
+    RoomMemberInviteRejectedEvent,
+    RoomMemberInviteRevokedEvent,
+    RoomMemberJoinedEvent,
+    RoomMemberKickedEvent,
+    RoomMemberLeftEvent,
+    RoomMemberUnbannedEvent, RoomMemberInvitedEvent, RoomMeJoinedEvent,
+)
 
 if TYPE_CHECKING:
     from matriisi.robotics.roboclient import RoboClient
 
 logger = logging.getLogger(__name__)
+
+_INVITE = MatrixRoomMemberMembership.INVITE
+_JOIN = MatrixRoomMemberMembership.JOIN
+_LEAVE = MatrixRoomMemberMembership.LEAVE
+_BAN = MatrixRoomMemberMembership.BAN
+_KNOCK = MatrixRoomMemberMembership.KNOCK
+
+
+def stringify_event(evt: MatrixHttpEvent):
+    stream = StringIO()
+    pprint(evt, stream=stream)
+    return stream.getvalue()
 
 
 @attr.s()
@@ -54,13 +74,14 @@ class MatrixState(object):
     cached_events: Deque[MatrixRoomEvent] = attr.ib(factory=partial(deque, maxlen=1000))
 
     #: The mapping of rooms data.
-    rooms: IdentifierDict[JoinedRoom] = attr.ib(factory=IdentifierDict)
+    rooms: IdentifierDict[Room] = attr.ib(factory=IdentifierDict)
 
     #: The ``next_batch`` key.
     next_batch: Optional[str] = attr.ib(default=None)
 
+    @staticmethod
     def _handle_m_room_message(
-        self, before: Room, snapshot: JoinedRoom, event: MatrixRoomEvent[MatrixEventRoomMessage]
+        before: Room, snapshot: Room, event: MatrixRoomEvent[MatrixEventRoomMessage]
     ):
         """
         Handles a new room message.
@@ -74,8 +95,9 @@ class MatrixState(object):
 
         return MessageEvent(snapshot, message)
 
+    @staticmethod
     def _handle_m_room_member(
-        self, before: Room, snapshot: Room, event: MatrixRoomEvent[MatrixEventRoomMember]
+        before: Room, snapshot: Room, event: MatrixRoomBaseStateEvent[MatrixEventRoomMember]
     ):
         """
         Handles a member event.
@@ -83,28 +105,78 @@ class MatrixState(object):
 
         # this requires a whole bunch of heuristics to detect what actually changed
         previous_event = before.find_event(
-            "m.room.member", str(event.sender), MatrixEventRoomMember
+            "m.room.member", event.state_key, MatrixEventRoomMember
         )
         if previous_event is None:
-            # this one is easy, member joined
-            return RoomMemberJoinedEvent(cast(JoinedRoom, snapshot), event.sender)
+            pm = _LEAVE
+        else:
+            pm = previous_event.content.membership
+
+        nm = event.content.membership
 
         # check membership changes
-        if previous_event.content.membership != event.content.membership:
-            pass
+        if pm != nm:
+            # oh boy...
 
-        stream = StringIO()
-        pprint(previous_event, stream=stream)
-        prev = stream.getvalue()
+            if pm == _INVITE and nm == _JOIN:  # accepted invite
+                return RoomMemberJoinedEvent(snapshot, event.sender, was_invited=True)
 
-        stream = StringIO()
-        pprint(event, stream=stream)
-        new = stream.getvalue()
+            elif pm == _INVITE and nm == _LEAVE:  # rejected/revoked invite
+                rejected_id = Identifier.parse(event.state_key)
+                if event.sender == rejected_id:
+                    return RoomMemberInviteRejectedEvent(snapshot, event.sender)
+                else:
+                    return RoomMemberInviteRevokedEvent(snapshot, rejected_id, event.sender)
 
+            elif pm == _JOIN and nm == _LEAVE:  # left room somehow
+                member_id = Identifier.parse(event.state_key)
+                if event.sender == member_id:
+                    return RoomMemberLeftEvent(snapshot, member_id)
+                else:
+                    return RoomMemberKickedEvent(
+                        snapshot, kicked_id=member_id, kicker_id=event.sender
+                    )
+
+            elif pm == _LEAVE and nm == _INVITE:  # newly invited
+                member_id = Identifier.parse(event.state_key)
+                return RoomMemberInvitedEvent(snapshot, invitee_id=member_id, inviter_id=event.sender)
+
+            elif pm == _LEAVE and nm == _JOIN:  # newly joined
+                member_id = Identifier.parse(event.state_key)
+                return RoomMemberJoinedEvent(snapshot, member_id, was_invited=False)
+
+            elif pm == _BAN and nm == _LEAVE:  # unbanned
+                member_id = Identifier.parse(event.state_key)
+                return RoomMemberUnbannedEvent(
+                    snapshot, unbanned_id=member_id, unbanner_id=event.sender
+                )
+
+            elif nm == _BAN:  # banned, in some form
+                banner = event.sender
+                banee = Identifier.parse(event.state_key)
+                return RoomMemberBannedEvent(
+                    snapshot, banned_id=banee, banner_id=banner, was_in_room=pm == _JOIN
+                )
+
+            else:
+                before = stringify_event(previous_event)
+                after = stringify_event(event)
+                logger.warning(
+                    f"Invalid or unsupported membership transistion detected: {pm} -> {nm}\n\n"
+                    f"previous event: {before}\n"
+                    f"next event: {after}"
+                )
+
+        else:
+            if pm == _JOIN and nm == _JOIN:
+                raise NotImplementedError()
+
+        before = stringify_event(previous_event)
+        after = stringify_event(event)
         logger.warning(
             "all heuristics failed when parsing member event. this is definitely a bug!\n\n"
-            f"previous: {prev}\n"
-            f"new: {new}"
+            f"previous event: {before}\n"
+            f"next event: {after}"
         )
 
     async def _backfill_events(self, room_id: Identifier, prev_batch: str, last_known_id: str):
@@ -174,9 +246,9 @@ class MatrixState(object):
                 matrix_events = list(evts) + matrix_events
         else:
             # new room, start with a joined room event
-            room = JoinedRoom(self.roboclient, room_data.room_id)
+            room = Room(self.roboclient, room_data.room_id)
             self.rooms[room_data.room_id] = room
-            events.append(RoomJoinedEvent(room))
+            events.append(RoomMeJoinedEvent(room))
 
         # replay events onto the room
         for evt in matrix_events:

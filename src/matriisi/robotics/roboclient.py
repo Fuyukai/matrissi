@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncContextManager, Type
+from typing import AsyncContextManager, Type, Any
 
 import trio
 
@@ -86,7 +86,7 @@ class RoboClient(object):
         Decorator that marks a function as an event handler.
 
         :param type: The type of the event.
-        :return: The original function.
+        :return: A callable that takes a function and returns it.
         """
 
         def inner(fn):
@@ -96,6 +96,16 @@ class RoboClient(object):
             return fn
 
         return inner
+
+    def all_events(self, fn: Any) -> Any:
+        """
+        Decorator that marks a function as handlinng all events.
+
+        :param fn: The function for the event.
+        :return: The same function.
+        """
+
+        self._event_bus.register_any_handler(fn)
 
 
 @asynccontextmanager

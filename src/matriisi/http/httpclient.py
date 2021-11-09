@@ -273,7 +273,8 @@ class MatrixHttp(object):
         else:
             return self._parse_custom_event(type_, event_content)
 
-    def _parse_relates_to(self, data):
+    @staticmethod
+    def _parse_relates_to(data):
         """
         Parses the relation data.
         """
@@ -435,7 +436,7 @@ class MatrixHttp(object):
         """
         Parses the ``rooms`` field of the sync payload.
         """
-        joined = self._parse_joined_rooms(data["join"])
+        joined = self._parse_joined_rooms(data.get("join", {}))
 
         return MatrixSyncRooms(invite=IdentifierDict(), joined=joined, leave=IdentifierDict())
 
@@ -458,6 +459,7 @@ class MatrixHttp(object):
         path: str,
         query_params: Mapping[str, str] = None,
         body: Any = None,
+        retry_timeout: int = 5,
     ) -> dict:
         """
         Makes a request to the Matrix server.
@@ -466,6 +468,7 @@ class MatrixHttp(object):
         :param path: The path to use. If this has no leading slash, it is prefixed automatically.
         :param query_params: The query parameters to send.
         :param body: The HTTP body to use.
+        :param retry_timeout: The retry timeout to use. If None, uses the higher-level timeout.
         :return: The body of the response, if any.
         """
 
@@ -481,15 +484,26 @@ class MatrixHttp(object):
         for try_ in range(0, 5):
             logger.debug(f"{method} {path} -> <pending> (try {try_ + 1}/5)")
 
-            resp = await self._session.request(
-                method=method,
-                url=path,
-                headers=headers,
-                params=query_params,
-                json=body,
-                allow_redirects=True,
-                timeout=99999999,  # genuinely, fuck off
-            )
+            if retry_timeout:
+                timeout = trio.move_on_after(retry_timeout)
+            else:
+                timeout = trio.CancelScope()
+
+            with timeout:
+                resp = await self._session.request(
+                    method=method,
+                    url=path,
+                    headers=headers,
+                    params=query_params,
+                    json=body,
+                    allow_redirects=True,
+                    timeout=99999999,  # genuinely, fuck off
+                )
+
+            if timeout.cancelled_caught:
+                logger.debug(f"{method} {path} -> <timed out> (try {try_ + 1}/5)")
+                continue
+
             logger.debug(f"{method} {path} -> {resp.status_code} (try {try_ + 1}/5)")
 
             headers = resp.headers
@@ -535,6 +549,8 @@ class MatrixHttp(object):
                 raise MatrixHttpException(MatrixErrorCode(error), body.get("error"))
 
             raise RuntimeError(f"Don't know what to do with code {resp.status_code}")
+
+        raise RuntimeError("All tries failed")
 
     async def versions(self) -> MatrixVersions:
         """
@@ -614,7 +630,7 @@ class MatrixHttp(object):
         if since is not None:
             params["since"] = since
 
-        result = await self.matrix_request("GET", "r0/sync", query_params=params)
+        result = await self.matrix_request("GET", "r0/sync", query_params=params, retry_timeout=0)
 
         # oh boy, this is a *lot* of parsing
         next_batch = result["next_batch"]
@@ -645,7 +661,7 @@ class MatrixHttp(object):
         room_id: IDENTIFIER_TYPE,
         event_id: str,
         *,
-        event_type: Type[MatrixHttpEventContent] = None,
+        event_type: Type[_EVT_TYPE] = None,
     ) -> MatrixRoomEvent[_EVT_TYPE]:
         """
         Gets a single event from a room.

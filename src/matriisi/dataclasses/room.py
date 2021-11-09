@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import abc
-import copy
 from collections import defaultdict
 from functools import cached_property
 from typing import (
@@ -22,7 +21,6 @@ from matriisi.http.httpevents import (
     MatrixHttpEventContent,
     MatrixRoomBaseStateEvent,
     MatrixRoomMemberMembership,
-    MatrixRoomStateEvent,
 )
 from matriisi.identifier import Identifier
 
@@ -33,10 +31,13 @@ if TYPE_CHECKING:
     from matriisi.robotics.roboclient import RoboClient
 
 
-class Room(abc.ABC):
+class Room(object):
     """
     A room is the most fundamental unit of Matrix communication. All events are sent through rooms,
     and all events are received through rooms.
+
+    Only joined rooms are represented via this class; invited/knocked/left rooms are represented
+    separately.
 
     A room must not be created outside of internal Matriisi code.
     """
@@ -138,6 +139,13 @@ class Room(abc.ABC):
             return
 
         subdict = self._state_events[event.type]
+        # room membership removal is handled specially
+        if event.type == "m.room.member":
+            # remove old member events that are left. invites, bans, etc are cached
+            if event.content.membership == MatrixRoomMemberMembership.LEAVE:
+                subdict.pop(event.state_key, None)
+                return
+
         subdict[event.state_key] = event  # type: ignore
 
     def _snapshot(self) -> Room:
@@ -201,26 +209,6 @@ class Room(abc.ABC):
 
         return member
 
-
-class JoinedRoom(Room):
-    """
-    A room that has been joined.
-    """
-
-    @property
-    def joined_members(self) -> Iterator[RoomMember]:
-        """
-        :return: An iterator for the joined members in this room.
-        """
-
-        for event in self._state_events[
-            "m.room.member"
-        ].values():  # type: MatrixRoomBaseStateEvent[MatrixEventRoomMember]
-            if event.content.membership != MatrixRoomMemberMembership.JOIN:
-                continue
-
-            yield RoomMember(event, self)
-
     async def send_event(self, event_type: str, data, *, txnid: str = None, state_key: str = None):
         """
         Low-level helper to directly send any event to this room.
@@ -247,19 +235,3 @@ class JoinedRoom(Room):
         body = {"msgtype": "m.text", "body": message_content, **extra}
 
         return await self.send_event(event_type="m.room.message", data=body)
-
-
-class InvitedRoom(Room):
-    """
-    A room that you have been invited to.
-    """
-
-    @cached_property
-    def inviter_id(self) -> Identifier:
-        """
-        :return: The identifier of the member that invited you to this room.
-        """
-        event = self.find_event("m.room.member", str(self._client.uid), MatrixEventRoomMember)
-        assert event, "room is missing member event for ourself?"
-
-        return event.sender

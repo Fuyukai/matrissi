@@ -35,6 +35,7 @@ class EventBus(object):
         """
         Runs an event safely.
         """
+
         try:
             await cb(event)
         except:
@@ -69,7 +70,18 @@ class EventBus(object):
         :param type: The type of the event to handle.
         :param fn: The function to callback with.
         """
+
         self._event_handlers[type].append(fn)
+
+    def register_any_handler(self, fn: Callable[[Event], Awaitable[Optional[Any]]]):
+        """
+        Registers a handler for ALL events.
+
+        :param fn: The function to call back with.
+        """
+
+        logger.warning(f"Registering event hook {fn.__qualname__}")
+        self._any_event_handlers.append(fn)
 
 
 @asynccontextmanager

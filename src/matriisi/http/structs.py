@@ -18,6 +18,7 @@ __all__ = (
     "MatrixInviteRoom",
     "MatrixLeftRoom",
     "MatrixRoomSummary",
+    "MatrixRoomMessages",
 )
 
 from matriisi.http.httpevents import (

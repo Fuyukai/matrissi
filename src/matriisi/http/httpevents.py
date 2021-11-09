@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Generic, List, Mapping, Optional, TypeVar, Union
+from typing import Generic, List, Mapping, Optional, TypeVar
 
 import attr
 
