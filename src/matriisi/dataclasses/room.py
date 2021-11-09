@@ -86,6 +86,7 @@ class Room(object):
         :return: The last known event ID received. This is primarily for internal usage when
                  replaying history.
         """
+
         return self._last_known_event_id
 
     ## Event Helpers ##
@@ -99,6 +100,7 @@ class Room(object):
         """
         Finds an event in the state events, using the ``event_type`` and ``state_key``.
         """
+
         subdict = self._state_events[event_type]
         if state_key is not None:
             evt = subdict.get(state_key)
@@ -128,6 +130,7 @@ class Room(object):
         :param content_type: The type of the body for this event. Optional, for typing.
         :return:
         """
+
         subdict = self._state_events[event_type]
         for k, v in subdict.items():
             if state_key is None:
@@ -177,6 +180,7 @@ class Room(object):
         :param id: The identifier of the member.
         :return: The member object, or None if there is no such member with the JOIN membership.
         """
+
         event = self.find_event("m.room.member", str(id), MatrixEventRoomMember)
         if event is None:
             return None
@@ -206,6 +210,7 @@ class Room(object):
         """
         :return: The :class:`.Identifier` of the user that created this room.
         """
+
         evt = self.find_event("m.room.create", "", MatrixEventRoomCreate)
         assert evt, "room is missing m.room.create state"
 
@@ -216,6 +221,7 @@ class Room(object):
         """
         :return: If this room is federated.
         """
+
         evt = self.find_event("m.room.create", "", MatrixEventRoomCreate)
         assert evt, "room is missing m.room.create state"
 
