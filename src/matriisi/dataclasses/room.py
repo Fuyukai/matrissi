@@ -148,7 +148,7 @@ class Room(object):
 
         subdict[event.state_key] = event  # type: ignore
 
-    def _snapshot(self) -> Room:
+    def snapshot(self) -> Room:
         """
         Takes a snapshot of this room at its current state.
         """
@@ -166,13 +166,30 @@ class Room(object):
         Gets a member from this room.
 
         :param id: The identifier of the member.
-        :return: The member object, or None if there is no such member.
+        :return: The member object, or None if there is no such member with the JOIN membership.
         """
         event = self.find_event("m.room.member", str(id), MatrixEventRoomMember)
         if event is None:
             return None
 
+        # ban/invite members are returned separately
+        if event.content.membership != MatrixRoomMemberMembership.JOIN:
+            return None
+
         return RoomMember(event, self)
+
+    @property
+    def members(self) -> Iterator[RoomMember]:
+        """
+        :return: A generator for the joined members of this room.
+        """
+
+        for state_key, event in self._state_events["m.room.member"].items():
+            content: MatrixEventRoomMember = event.content
+            if content.membership != MatrixRoomMemberMembership.JOIN:
+                continue
+
+            yield RoomMember(event, self)
 
     # these are cached as these never change (m.room.create is immutable)
     @cached_property

@@ -252,9 +252,9 @@ class MatrixState(object):
 
         # replay events onto the room
         for evt in matrix_events:
-            self.cached_events.append(evt)
+            self.cached_events.append(evt)  # type: ignore
 
-            before = room._snapshot()
+            before = room.snapshot()
             if isinstance(evt, MatrixRoomBaseStateEvent):
                 # noinspection PyProtectedMember
                 room._update_state(evt)
@@ -264,7 +264,7 @@ class MatrixState(object):
                 event_handler = getattr(self, f"_handle_{evt_type}", None)
 
                 if event_handler:
-                    snapshot = room._snapshot()
+                    snapshot = room.snapshot()
                     result = event_handler(before, snapshot, evt)
 
                     if result is not None:
