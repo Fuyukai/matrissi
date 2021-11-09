@@ -1,3 +1,8 @@
+import attr
+
+from matriisi import Room
+
+
 class Event(object):
     """
     Base class for a single event.
@@ -9,3 +14,13 @@ class Event(object):
     #: Examples of insignificant events include all ephemeral events, such as typing and read
     #: indicators.
     insignificant: bool
+
+
+@attr.s(frozen=True, slots=True)
+class RoomEvent(Event):
+    """
+    An event with a room. This is most events.
+    """
+
+    #: The room this event was for.
+    room: Room = attr.ib()

@@ -15,12 +15,15 @@ from matriisi.dataclasses.room import Room
 from matriisi.http import (
     MatrixEventRoomMember,
     MatrixEventRoomMessage,
+    MatrixEventRoomTopic,
+    MatrixHttpEvent,
     MatrixJoinedRoom,
     MatrixRoomBaseEvent,
     MatrixRoomBaseStateEvent,
     MatrixRoomEvent,
     MatrixRoomMemberMembership,
-    MatrixSync, MatrixHttpEvent,
+    MatrixRoomStateEvent,
+    MatrixSync,
 )
 from matriisi.id_dict import IdentifierDict
 from matriisi.identifier import Identifier
@@ -28,16 +31,20 @@ from matriisi.robotics.event import (
     Event,
     MessageEvent,
     MessageReplyEvent,
+    RoomMeJoinedEvent,
+    RoomTopicChangedEvent,
 )
-from matriisi.robotics.event.room import (
+from matriisi.robotics.event.member import (
     RoomMemberBannedEvent,
+    RoomMemberInvitedEvent,
     RoomMemberInviteRejectedEvent,
     RoomMemberInviteRevokedEvent,
     RoomMemberJoinedEvent,
     RoomMemberKickedEvent,
     RoomMemberLeftEvent,
-    RoomMemberUnbannedEvent, RoomMemberInvitedEvent, RoomMeJoinedEvent,
+    RoomMemberUnbannedEvent,
 )
+from matriisi.robotics.event.room import RoomStateChangedEvent
 
 if TYPE_CHECKING:
     from matriisi.robotics.roboclient import RoboClient
@@ -104,9 +111,7 @@ class MatrixState(object):
         """
 
         # this requires a whole bunch of heuristics to detect what actually changed
-        previous_event = before.find_event(
-            "m.room.member", event.state_key, MatrixEventRoomMember
-        )
+        previous_event = before.find_event("m.room.member", event.state_key, MatrixEventRoomMember)
         if previous_event is None:
             pm = _LEAVE
         else:
@@ -139,7 +144,9 @@ class MatrixState(object):
 
             elif pm == _LEAVE and nm == _INVITE:  # newly invited
                 member_id = Identifier.parse(event.state_key)
-                return RoomMemberInvitedEvent(snapshot, invitee_id=member_id, inviter_id=event.sender)
+                return RoomMemberInvitedEvent(
+                    snapshot, invitee_id=member_id, inviter_id=event.sender
+                )
 
             elif pm == _LEAVE and nm == _JOIN:  # newly joined
                 member_id = Identifier.parse(event.state_key)
@@ -178,6 +185,22 @@ class MatrixState(object):
             f"previous event: {before}\n"
             f"next event: {after}"
         )
+
+    @staticmethod
+    def _handle_m_room_topic(
+        before: Room, snapshot: Room, event: MatrixRoomBaseStateEvent[MatrixEventRoomTopic]
+    ):
+        """
+        Handles a room's topic change.
+        """
+
+        previous_event = before.find_event("m.room.topic", "", MatrixEventRoomTopic)
+        if previous_event is None:
+            previous_topic = None
+        else:
+            previous_topic = previous_event.content.topic
+
+        return RoomTopicChangedEvent(snapshot, previous_topic, event.content.topic)
 
     async def _backfill_events(self, room_id: Identifier, prev_batch: str, last_known_id: str):
         """
@@ -255,9 +278,10 @@ class MatrixState(object):
             self.cached_events.append(evt)  # type: ignore
 
             before = room.snapshot()
-            if isinstance(evt, MatrixRoomBaseStateEvent):
+            if isinstance(evt, MatrixRoomStateEvent):
                 # noinspection PyProtectedMember
                 room._update_state(evt)
+                events.append(RoomStateChangedEvent(before, room.snapshot(), evt))
 
             if last_room is not None:
                 evt_type = evt.type.replace(".", "_")
@@ -269,6 +293,8 @@ class MatrixState(object):
 
                     if result is not None:
                         events.append(result)
+                else:
+                    logger.warning(f"No event handler for '{evt_type}'")
 
         return events
 

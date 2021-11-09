@@ -15,7 +15,7 @@ __all__ = (
     "MatrixJoinedRoom",
     "MatrixKnockRoom",
     "MatrixTimeline",
-    "MatrixInviteRoom",
+    "MatrixInvitedRoom",
     "MatrixLeftRoom",
     "MatrixRoomSummary",
     "MatrixRoomMessages",
@@ -85,7 +85,7 @@ class MatrixRoom(object):
 
 
 @attr.s(frozen=True, slots=True)
-class MatrixInviteRoom(MatrixRoom):
+class MatrixInvitedRoom(MatrixRoom):
     """
     Structure for an invite room. This strips out the ``invite_state`` object (at least for now)
     and jumps straight to ``events``.
@@ -184,7 +184,7 @@ class MatrixSyncRooms(object):
     """
 
     #: The rooms that the current user has been invited to.
-    invite: IdentifierDict[MatrixInviteRoom] = attr.ib()
+    invite: IdentifierDict[MatrixInvitedRoom] = attr.ib()
 
     #: The rooms that the current user has joined.
     joined: IdentifierDict[MatrixJoinedRoom] = attr.ib()

@@ -1,4 +1,7 @@
+from io import StringIO
+
 import trio
+from prettyprinter import pprint
 from trio import CapacityLimiter, Nursery
 
 try:
@@ -42,3 +45,13 @@ async def open_limiting_nursery(max_tasks: int = 64):
     """
     async with trio.open_nursery() as n:
         yield LimitingNursery(n, CapacityLimiter(max_tasks))
+
+
+def stringify_object(obb) -> str:
+    """
+    Stringifies an object using prettyprinter.
+    """
+
+    stream = StringIO()
+    pprint(obb, stream=stream)
+    return stream.getvalue()

@@ -50,6 +50,7 @@ from matriisi.http.httpevents import (
     RelatesToRelation,
 )
 from matriisi.http.structs import (
+    MatrixInvitedRoom,
     MatrixJoinedRoom,
     MatrixPresence,
     MatrixRoomMessages,
@@ -62,7 +63,7 @@ from matriisi.http.structs import (
 )
 from matriisi.id_dict import IdentifierDict
 from matriisi.identifier import IDENTIFIER_TYPE, Identifier
-from matriisi.utils import asynccontextmanager
+from matriisi.utils import asynccontextmanager, stringify_object
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,7 @@ class MatrixHttp(object):
         aliases = content.get("alt_aliases", [])
 
         return MatrixEventRoomCanonicalAlias(alias=alias, alt_aliases=aliases)
+        return MatrixEventRoomCanonicalAlias(alias=alias, alt_aliases=aliases)
 
     @staticmethod
     def _parse_room_join_rules(content):
@@ -247,9 +249,21 @@ class MatrixHttp(object):
         elif type_ == "m.room.join_rules":
             evt = self._parse_room_join_rules(event_content)
 
+        elif type_ == "m.room.topic":
+            evt = self._parse_room_topic(event_content)
+
+        elif type_ == "m.push_rules":
+            logger.warning(f"Discarding event 'm.push_rules' as we are not a real account")
+            evt = MatrixUnknownEventContent(data=event_content)
+
         else:
-            logger.warning(f"Encountered unknown built-in event type {type_}")
-            return MatrixUnknownEventContent(data=event_content)
+            content = MatrixUnknownEventContent(data=event_content)
+            stringified = stringify_object(content)
+            logger.warning(
+                f"Encountered unknown built-in event type {type_}\n\n"
+                f"Event content: {stringified}"
+            )
+            return content
 
         return evt
 
@@ -257,17 +271,19 @@ class MatrixHttp(object):
         """
         Parses a custom, unknown event.
         """
-        converter = self._custom_converters.get(type_)
-        if converter is None:
+
+        event_converter = self._custom_converters.get(type_)
+        if event_converter is None:
             logger.debug(f"Encountered unknown event {type_}, skipping")
             return MatrixUnknownEventContent(data=event_content)
 
-        return converter(event_content)
+        return event_converter(event_content)
 
     def _parse_event_content(self, type_: str, event_content) -> MatrixHttpEventContent:
         """
         Parses the content of an event.
         """
+
         if type_.startswith("m."):
             return self._parse_matrix_event(type_, event_content)
         else:
@@ -278,6 +294,7 @@ class MatrixHttp(object):
         """
         Parses the relation data.
         """
+
         for key in RELATION_KEYS:
             relations_list = data.get(key, [])
             if relations_list:
@@ -300,6 +317,7 @@ class MatrixHttp(object):
         """
         Parses a room event.
         """
+
         type_: str = full_event["type"]
         sender = Identifier.parse(full_event["sender"])
 
@@ -364,6 +382,7 @@ class MatrixHttp(object):
         """
         Parses a simple event.
         """
+
         type_ = data["type"]
         content = data["content"]
 
@@ -376,6 +395,7 @@ class MatrixHttp(object):
         """
         Parses a timeline from room data.
         """
+
         events = cast(
             List[MatrixRoomEvent],
             [self._parse_room_event(event, override_room_id=room_id) for event in data["events"]],
@@ -390,6 +410,7 @@ class MatrixHttp(object):
         """
         Parses a room summary.
         """
+
         return MatrixRoomSummary(
             data.get("m.heroes", []),
             data.get("m.invited_member_count"),
@@ -400,6 +421,7 @@ class MatrixHttp(object):
         """
         Parses the joined rooms.
         """
+
         rooms = IdentifierDict()
 
         for room_id, room_data in data.items():
@@ -432,13 +454,35 @@ class MatrixHttp(object):
 
         return rooms
 
+    def _parse_invited_rooms(self, data) -> IdentifierDict:
+        """
+        Parses invited room data.
+        """
+
+        rooms = IdentifierDict()
+        for room_id, room_data in data.items():
+            state = cast(
+                List[MatrixRoomBaseStateEvent],
+                [
+                    self._parse_room_event(evt, override_room_id=room_id)
+                    for evt in room_data["invite_state"]["events"]
+                ],
+            )
+
+            room_id = Identifier.parse(room_id)
+            room = MatrixInvitedRoom(room_id=room_id, invite_state=state)
+            rooms[room_id] = room
+
+        return rooms
+
     def _parse_sync_rooms(self, data) -> MatrixSyncRooms:
         """
         Parses the ``rooms`` field of the sync payload.
         """
         joined = self._parse_joined_rooms(data.get("join", {}))
+        invited = self._parse_invited_rooms(data.get("invite", {}))
 
-        return MatrixSyncRooms(invite=IdentifierDict(), joined=joined, leave=IdentifierDict())
+        return MatrixSyncRooms(invite=invited, joined=joined, leave=IdentifierDict())
 
     ## HTTP Methods ##
 

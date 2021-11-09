@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncContextManager, Type, Any
+from typing import Any, AsyncContextManager, Type
 
 import trio
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import abc
 from collections import defaultdict
 from functools import cached_property
 from typing import (
     TYPE_CHECKING,
+    Any,
     Dict,
     Iterable,
     Iterator,
@@ -21,6 +21,7 @@ from matriisi.http.httpevents import (
     MatrixHttpEventContent,
     MatrixRoomBaseStateEvent,
     MatrixRoomMemberMembership,
+    MatrixRoomStateEvent,
 )
 from matriisi.identifier import Identifier
 
@@ -58,13 +59,15 @@ class Room(object):
         #: The internal :class:`.Identifier` for this room (non-human friendly).
         self.id = identifier
 
-        self._state_events: Dict[str, Dict[str, MatrixRoomBaseStateEvent]] = defaultdict(lambda: {})
+        self._state_events: Dict[str, Dict[str, MatrixRoomStateEvent]] = defaultdict(lambda: {})
 
         # used internally for replaying events
         self._last_known_event_id: str = ""
 
     def __str__(self):
         return f"<{type(self).__name__} id='{self.id}'>"
+
+    __repr__ = __str__
 
     @property
     def last_known_event_id(self) -> str:
@@ -105,7 +108,7 @@ class Room(object):
         event_type: str,
         state_key: str = None,
         content_type: Type[T] = None,
-    ) -> Iterable[Union[MatrixRoomBaseStateEvent[T]]]:
+    ) -> Iterable[Union[MatrixRoomStateEvent[T]]]:
         """
         Find all events matching the criteria.
 
@@ -123,16 +126,12 @@ class Room(object):
             elif isinstance(v, content_type):
                 yield v
 
-    def _update_state(self, event: MatrixRoomBaseStateEvent):
+    def _update_state(self, event: MatrixRoomStateEvent[Any]):
         """
         Updates the room state.
         """
         # this should never happen
-        try:
-            self._last_known_event_id = event.event_id
-        except AttributeError:
-            # stripped state...
-            pass
+        self._last_known_event_id = event.event_id
 
         # skip state events
         if not hasattr(event, "state_key"):
@@ -154,11 +153,10 @@ class Room(object):
         """
 
         r = type(self)(self.client, self.id)
-        d = {}
+        d = r._state_events
         for typ, subdict in self._state_events.items():
             d[typ] = subdict.copy()
 
-        r._state_events = d
         return r
 
     def member(self, id: IDENTIFIER_TYPE) -> Optional[RoomMember]:
