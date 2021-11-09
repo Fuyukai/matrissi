@@ -14,6 +14,8 @@ from typing import (
     Union,
 )
 
+import markdown2
+
 from matriisi.dataclasses.member import RoomMember
 from matriisi.http.httpevents import (
     MatrixEventRoomCreate,
@@ -248,5 +250,26 @@ class Room(object):
         """
 
         body = {"msgtype": "m.text", "body": message_content, **extra}
+
+        return await self.send_event(event_type="m.room.message", data=body)
+
+    async def send_markdown_message(self, message_content: str, **extra):
+        """
+        Sends a message in MD format.
+
+        :param message_content: The MD message content to send.
+        :param extra: Any extra data.
+        :return: Nothing.
+        """
+
+        html_body = markdown2.markdown(message_content, extras=["fenced-code-blocks", "strike",
+                                                                "tables"])
+
+        body = {
+            "msgtype": "m.text",
+            "body": message_content,
+            "format": "org.matrix.custom.html",
+            "formatted_body": html_body,
+        }
 
         return await self.send_event(event_type="m.room.message", data=body)

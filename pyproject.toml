@@ -15,7 +15,7 @@ cattrs = "^1.8.0"
 h2 = "^4.1.0"
 prettyprinter = "^0.18.0"
 # optional helper for sending rST methods
-docutils = { version = "^0.17.1", optional = true }
+markdown2 = "^2.4.1"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.9.2"

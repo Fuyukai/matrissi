@@ -139,6 +139,17 @@ class MatrixRoomBaseEvent(MatrixHttpEvent[CONTENT_TYPE]):
     sender: Identifier = attr.ib(converter=Identifier.parse)
 
 
+@attr.s(frozen=True, slots=True)
+class MatrixRoomRedactedEvent(MatrixRoomBaseEvent[None]):
+    """
+    Event class for a redacted event. This is *not* the data for an event that *causes* the
+    redaction.
+    """
+
+    #: The event this event was redacted by.
+    redacted_by: str = attr.ib()
+
+
 @attr.s(frozen=True, slots=False)
 class MatrixRoomBaseStateEvent(MatrixRoomBaseEvent[CONTENT_TYPE]):
     """

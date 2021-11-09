@@ -26,6 +26,7 @@ import httpx
 import trio
 from cattr import GenConverter
 from httpx import URL, AsyncClient
+from prettyprinter import pprint
 from trio.lowlevel import checkpoint
 
 from matriisi.http.httpevents import (
@@ -48,6 +49,7 @@ from matriisi.http.httpevents import (
     MatrixRoomStateEvent,
     MatrixUnknownEventContent,
     RelatesToRelation,
+    MatrixRoomRedactedEvent,
 )
 from matriisi.http.structs import (
     MatrixInvitedRoom,
@@ -135,6 +137,14 @@ class MatrixHttp(object):
         f"Matriisi/({version('matriisi')} Python/" f"{'.'.join(map(str, sys.version_info[0:3]))}"
     )
 
+    DISCARD_EVENTS = {
+        "m.typing",
+        "m.push_rules",
+        "m.fully_read",
+        "m.typing",
+        "m.receipt",
+    }
+
     def __init__(self, session: AsyncClient):
         """
         Creates a new HTTP client.
@@ -197,7 +207,6 @@ class MatrixHttp(object):
         aliases = content.get("alt_aliases", [])
 
         return MatrixEventRoomCanonicalAlias(alias=alias, alt_aliases=aliases)
-        return MatrixEventRoomCanonicalAlias(alias=alias, alt_aliases=aliases)
 
     @staticmethod
     def _parse_room_join_rules(content):
@@ -234,7 +243,11 @@ class MatrixHttp(object):
         Parses a Matrix event. This is a hardcoded, super-function.
         """
 
-        if type_ == "m.room.create":
+        if type_ in self.DISCARD_EVENTS:
+            logger.debug(f"Discarded event '{type_}'")
+            evt = MatrixUnknownEventContent(data=event_content)
+
+        elif type_ == "m.room.create":
             evt = self._parse_room_create(event_content)
 
         elif type_ == "m.room.member":
@@ -252,15 +265,11 @@ class MatrixHttp(object):
         elif type_ == "m.room.topic":
             evt = self._parse_room_topic(event_content)
 
-        elif type_ == "m.push_rules":
-            logger.warning(f"Discarding event 'm.push_rules' as we are not a real account")
-            evt = MatrixUnknownEventContent(data=event_content)
-
         else:
             content = MatrixUnknownEventContent(data=event_content)
-            stringified = stringify_object(content)
+            stringified = stringify_object(event_content)
             logger.warning(
-                f"Encountered unknown built-in event type {type_}\n\n"
+                f"Encountered unknown built-in event type {type_}\n"
                 f"Event content: {stringified}"
             )
             return content
@@ -274,7 +283,11 @@ class MatrixHttp(object):
 
         event_converter = self._custom_converters.get(type_)
         if event_converter is None:
-            logger.debug(f"Encountered unknown event {type_}, skipping")
+            stringified = stringify_object(event_content)
+            logger.debug(
+                f"Encountered unknown event {type_}, skipping\n"
+                f"Event content: {stringified}"
+            )
             return MatrixUnknownEventContent(data=event_content)
 
         return event_converter(event_content)
@@ -321,13 +334,25 @@ class MatrixHttp(object):
         type_: str = full_event["type"]
         sender = Identifier.parse(full_event["sender"])
 
+        unsigned = full_event.get("unsigned", {})
+        if "redacted_by" in unsigned:
+            # redacted event
+            return MatrixRoomRedactedEvent(
+                type=type_, content=None, sender=sender, redacted_by=unsigned["redacted_by"]
+            )
+
         # stripped state events don't have event_id or origin_server_ts
         is_full_event = "event_id" in full_event
 
         content = full_event["content"]
         relations, relates_to = self._parse_relates_to(content)
 
-        content = self._parse_event_content(type_, full_event["content"])
+        try:
+            content = self._parse_event_content(type_, content)
+        except KeyError:
+            pprint(full_event)
+            raise
+
         # awkward workaround to not have to pass relates_to to every content
         content.relates_to.relates_to = relates_to
         content.relates_to.relations = relations
