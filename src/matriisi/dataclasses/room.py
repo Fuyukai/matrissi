@@ -20,6 +20,8 @@ from matriisi.dataclasses.member import RoomMember
 from matriisi.http.httpevents import (
     MatrixEventRoomCreate,
     MatrixEventRoomMember,
+    MatrixEventRoomName,
+    MatrixEventRoomTopic,
     MatrixHttpEventContent,
     MatrixRoomBaseStateEvent,
     MatrixRoomMemberMembership,
@@ -67,7 +69,14 @@ class Room(object):
         self._last_known_event_id: str = ""
 
     def __str__(self):
-        return f"<{type(self).__name__} id='{self.id}'>"
+        s = f"<{type(self).__name__} id='{self.id}'"
+        name = self.name
+        if name is not None:
+            s += f" name='{self.name}'>"
+        else:
+            s += ">"
+
+        return s
 
     __repr__ = __str__
 
@@ -212,6 +221,38 @@ class Room(object):
 
         return evt.content.m_federate
 
+    @property
+    def name(self) -> Optional[str]:
+        """
+        Returns the name for this room.
+        """
+
+        evt = self.find_event("m.room.name", "", MatrixEventRoomName)
+        if evt is None:
+            return None
+
+        name = evt.content.name
+        if not name:
+            return None
+
+        return name
+
+    @property
+    def topic(self) -> Optional[str]:
+        """
+        Returns the topic for this room.
+        """
+
+        evt = self.find_event("m.room.topic", "", MatrixEventRoomTopic)
+        if evt is None:
+            return None
+
+        topic = evt.content.topic
+        if not topic:
+            return None
+
+        return topic
+
     # not cached properties
     def creator(self) -> RoomMember:
         """
@@ -262,14 +303,16 @@ class Room(object):
         :return: Nothing.
         """
 
-        html_body = markdown2.markdown(message_content, extras=["fenced-code-blocks", "strike",
-                                                                "tables"])
+        html_body = markdown2.markdown(
+            message_content, extras=["fenced-code-blocks", "strike", "tables", "break-on-newline"]
+        )
 
         body = {
             "msgtype": "m.text",
             "body": message_content,
             "format": "org.matrix.custom.html",
             "formatted_body": html_body,
+            **extra,
         }
 
         return await self.send_event(event_type="m.room.message", data=body)

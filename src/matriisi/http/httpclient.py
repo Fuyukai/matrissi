@@ -46,10 +46,10 @@ from matriisi.http.httpevents import (
     MatrixRoomEvent,
     MatrixRoomJoinRule,
     MatrixRoomMemberMembership,
+    MatrixRoomRedactedEvent,
     MatrixRoomStateEvent,
     MatrixUnknownEventContent,
     RelatesToRelation,
-    MatrixRoomRedactedEvent,
 )
 from matriisi.http.structs import (
     MatrixInvitedRoom,
@@ -265,12 +265,14 @@ class MatrixHttp(object):
         elif type_ == "m.room.topic":
             evt = self._parse_room_topic(event_content)
 
+        elif type_ == "m.room.name":
+            evt = self._parse_room_name(event_content)
+
         else:
             content = MatrixUnknownEventContent(data=event_content)
             stringified = stringify_object(event_content)
             logger.warning(
-                f"Encountered unknown built-in event type {type_}\n"
-                f"Event content: {stringified}"
+                f"Encountered unknown built-in event type {type_}\n" f"Event content: {stringified}"
             )
             return content
 
@@ -285,8 +287,7 @@ class MatrixHttp(object):
         if event_converter is None:
             stringified = stringify_object(event_content)
             logger.debug(
-                f"Encountered unknown event {type_}, skipping\n"
-                f"Event content: {stringified}"
+                f"Encountered unknown event {type_}, skipping\n" f"Event content: {stringified}"
             )
             return MatrixUnknownEventContent(data=event_content)
 

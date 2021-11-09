@@ -11,6 +11,7 @@ from matriisi.robotics.event.base import Event, RoomEvent
 __all__ = (
     "RoomMeJoinedEvent",
     "RoomTopicChangedEvent",
+    "RoomStateChangedEvent",
 )
 
 
