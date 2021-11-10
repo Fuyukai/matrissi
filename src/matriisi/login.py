@@ -10,10 +10,7 @@ async def do_it(user_id: str, password: str):
     id = Identifier.parse(user_id)
     async with create_http_client(id.domain) as client:
         body = {
-            "identifier": {
-                "type": "m.id.user",
-                "user": id.localpart
-            },
+            "identifier": {"type": "m.id.user", "user": id.localpart},
             "device_id": "Matriisi",
             "initial_device_display_name": "Matriisi Library",
             "password": password,

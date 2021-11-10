@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import attr
 
@@ -22,10 +22,38 @@ class Message(EventWrapper[MatrixEventRoomMessage]):
     #: The room this message was sent in.
     room: Room = attr.ib()
 
+    async def edit_text(
+        self,
+        new_content: str,
+        *,
+        render_markdown: bool = True,
+        wait_for_sync: bool = False,
+        **extra,
+    ) -> Union[str, Message]:
+        """
+        Edits this message. You must have been the one who sent it.
+        """
+
+        return await self.room.edit_text_message(
+            self.event.event_id,
+            new_content,
+            render_markdown=render_markdown,
+            wait_for_sync=wait_for_sync,
+            **extra,
+        )
+
+    @property
+    def is_notice(self) -> bool:
+        """
+        :return: If this message is a notice message.
+        """
+
+        return self.event.content.type == "m.notice"
+
     @property
     def sender_id(self) -> Identifier:
         """
-        :returns: The ID of the sender for this message.
+        :return: The ID of the sender for this message.
         """
 
         return self.event.sender

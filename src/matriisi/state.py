@@ -4,11 +4,12 @@ import logging
 from collections import deque
 from functools import partial
 from io import StringIO
-from typing import TYPE_CHECKING, Deque, List, Optional
+from typing import TYPE_CHECKING, Any, Deque, List, Optional, Type
 
 import attr
 from prettyprinter import pprint
 from trio import MemorySendChannel
+from trio._core import ParkingLot
 
 from matriisi.dataclasses.message import Message
 from matriisi.dataclasses.room import Room
@@ -29,6 +30,7 @@ from matriisi.event import (
     RoomTopicChangedEvent,
 )
 from matriisi.http import (
+    CONTENT_TYPE,
     MatrixEventRoomMember,
     MatrixEventRoomMessage,
     MatrixEventRoomTopic,
@@ -76,13 +78,44 @@ class MatrixState(object):
     event_channel: MemorySendChannel[Event] = attr.ib()
 
     #: A deque of cached events.
-    cached_events: Deque[MatrixRoomEvent] = attr.ib(factory=partial(deque, maxlen=1000))
+    cached_events: Deque[MatrixRoomEvent[CONTENT_TYPE]] = attr.ib(
+        factory=partial(deque, maxlen=1000)
+    )
 
     #: The mapping of rooms data.
     rooms: IdentifierDict[Room] = attr.ib(factory=IdentifierDict)
 
     #: The ``next_batch`` key.
     next_batch: Optional[str] = attr.ib(default=None)
+
+    #: The parking lot used to block until next synchronisation.
+    parking_lot: ParkingLot = attr.ib(factory=ParkingLot)
+
+    ## Public API ##
+
+    def find_event(
+        self, event_id: str, *, type: Type[CONTENT_TYPE] = None
+    ) -> Optional[MatrixRoomEvent[CONTENT_TYPE]]:
+        """
+        Finds a cached event.
+
+        :param event_id: The event ID to look up.
+        :param type: The type of the event content.
+        :return: The :class:`.MatrixRoomEvent`, or None if no such event was cached.
+        """
+
+        for event in self.cached_events:
+            if event.event_id == event_id:
+                return event
+
+    async def wait_until_sync(self):
+        """
+        Waits until the next sync.
+        """
+
+        await self.parking_lot.park()
+
+    ## Internal API ##
 
     @staticmethod
     def _handle_m_room_message(
@@ -273,7 +306,8 @@ class MatrixState(object):
 
         # replay events onto the room
         for evt in matrix_events:
-            self.cached_events.append(evt)  # type: ignore
+            if isinstance(evt, MatrixRoomEvent):
+                self.cached_events.append(evt)
 
             before = room.snapshot()
             if isinstance(evt, MatrixRoomStateEvent):
@@ -296,6 +330,8 @@ class MatrixState(object):
 
         return events
 
+    ## Private API ##
+
     async def sync(self, sync: MatrixSync, *, initial_batch: bool):
         """
         Synchronises local state with the server state.
@@ -309,6 +345,8 @@ class MatrixState(object):
 
         for id, room_data in sync.room_data.joined.items():
             events += await self._process_joined_room(room_data, dont_backfill=initial_batch)
+
+        self.parking_lot.unpark_all()
 
         # drop the events on the floor
         if initial_batch:
