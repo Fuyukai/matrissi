@@ -14,13 +14,15 @@ attrs = "^21.2.0"
 cattrs = "^1.8.0"
 h2 = "^4.1.0"
 prettyprinter = "^0.18.0"
-# optional helper for sending rST methods
 markdown2 = "^2.4.1"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.9.2"
 black = "^21.9b0"
 coloredlogs = "^15.0.1"
+
+[tool.poetry.scripts]
+matriisi-pw-login = "matriisi.login:main"
 
 [tool.poetry.extras]
 docutils = ["docutils"]

@@ -26,7 +26,6 @@ import httpx
 import trio
 from cattr import GenConverter
 from httpx import URL, AsyncClient
-from prettyprinter import pprint
 from trio.lowlevel import checkpoint
 
 from matriisi.http.httpevents import (
@@ -348,11 +347,7 @@ class MatrixHttp(object):
         content = full_event["content"]
         relations, relates_to = self._parse_relates_to(content)
 
-        try:
-            content = self._parse_event_content(type_, content)
-        except KeyError:
-            pprint(full_event)
-            raise
+        content = self._parse_event_content(type_, content)
 
         # awkward workaround to not have to pass relates_to to every content
         content.relates_to.relates_to = relates_to

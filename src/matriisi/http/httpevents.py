@@ -27,6 +27,9 @@ __all__ = (
     "MatrixEventRoomTopic",
     "MatrixRelatesTo",
     "RelatesToRelation",
+    "RELATION_KEYS",
+    "CONTENT_TYPE",
+    "REPLY_KEYS",
 )
 
 CONTENT_TYPE = TypeVar("CONTENT_TYPE")
