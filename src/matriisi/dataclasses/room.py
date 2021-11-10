@@ -33,7 +33,7 @@ T = TypeVar("T", bound=MatrixHttpEventContent)
 
 if TYPE_CHECKING:
     from matriisi.identifier import IDENTIFIER_TYPE
-    from matriisi.robotics.roboclient import RoboClient
+    from matriisi.roboclient import RoboClient
 
 
 class Room(object):

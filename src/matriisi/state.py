@@ -4,7 +4,7 @@ import logging
 from collections import deque
 from functools import partial
 from io import StringIO
-from typing import TYPE_CHECKING, Deque, List, Optional, cast
+from typing import TYPE_CHECKING, Deque, List, Optional
 
 import attr
 from prettyprinter import pprint
@@ -12,6 +12,22 @@ from trio import MemorySendChannel
 
 from matriisi.dataclasses.message import Message
 from matriisi.dataclasses.room import Room
+from matriisi.event import (
+    Event,
+    MessageEvent,
+    MessageReplyEvent,
+    RoomMeJoinedEvent,
+    RoomMemberBannedEvent,
+    RoomMemberInvitedEvent,
+    RoomMemberInviteRejectedEvent,
+    RoomMemberInviteRevokedEvent,
+    RoomMemberJoinedEvent,
+    RoomMemberKickedEvent,
+    RoomMemberLeftEvent,
+    RoomMemberUnbannedEvent,
+    RoomStateChangedEvent,
+    RoomTopicChangedEvent,
+)
 from matriisi.http import (
     MatrixEventRoomMember,
     MatrixEventRoomMessage,
@@ -27,27 +43,9 @@ from matriisi.http import (
 )
 from matriisi.id_dict import IdentifierDict
 from matriisi.identifier import Identifier
-from matriisi.robotics.event import (
-    Event,
-    MessageEvent,
-    MessageReplyEvent,
-    RoomMeJoinedEvent,
-    RoomTopicChangedEvent,
-)
-from matriisi.robotics.event.member import (
-    RoomMemberBannedEvent,
-    RoomMemberInvitedEvent,
-    RoomMemberInviteRejectedEvent,
-    RoomMemberInviteRevokedEvent,
-    RoomMemberJoinedEvent,
-    RoomMemberKickedEvent,
-    RoomMemberLeftEvent,
-    RoomMemberUnbannedEvent,
-)
-from matriisi.robotics.event.room import RoomStateChangedEvent
 
 if TYPE_CHECKING:
-    from matriisi.robotics.roboclient import RoboClient
+    from matriisi.roboclient import RoboClient
 
 logger = logging.getLogger(__name__)
 

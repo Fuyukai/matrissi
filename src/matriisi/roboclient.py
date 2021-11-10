@@ -6,11 +6,11 @@ from typing import Any, AsyncContextManager, Type
 
 import trio
 
+from matriisi.event import Event
+from matriisi.event.bus import EventBus, open_event_bus
 from matriisi.http import MatrixHttp, create_http_client
 from matriisi.identifier import Identifier
-from matriisi.robotics.event import Event
-from matriisi.robotics.event.bus import EventBus, open_event_bus
-from matriisi.robotics.state import MatrixState
+from matriisi.state import MatrixState
 from matriisi.utils import asynccontextmanager
 
 logger = logging.getLogger(__name__)

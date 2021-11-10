@@ -5,8 +5,8 @@ from typing import Optional
 import attr
 
 from matriisi.dataclasses.room import Room
+from matriisi.event.base import Event, RoomEvent
 from matriisi.http import MatrixRoomStateEvent
-from matriisi.robotics.event.base import Event, RoomEvent
 
 __all__ = (
     "RoomMeJoinedEvent",

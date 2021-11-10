@@ -3,8 +3,8 @@ from trio.lowlevel import checkpoint
 
 from matriisi.dataclasses.message import Message
 from matriisi.dataclasses.room import Room
+from matriisi.event.base import Event
 from matriisi.http import MatrixEventRoomMessage
-from matriisi.robotics.event.base import Event
 
 
 @attr.s(frozen=True, slots=True)

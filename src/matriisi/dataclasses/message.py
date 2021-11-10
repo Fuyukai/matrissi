@@ -11,7 +11,6 @@ from matriisi.identifier import Identifier
 if TYPE_CHECKING:
     from matriisi.dataclasses.member import RoomMember
     from matriisi.dataclasses.room import Room
-    from matriisi.robotics.roboclient import RoboClient
 
 
 @attr.s(frozen=True, slots=True)

@@ -7,7 +7,7 @@ from typing import Any, AsyncContextManager, Awaitable, Callable, Optional, Type
 
 import trio
 
-from matriisi.robotics.event import Event
+from matriisi.event.base import Event
 from matriisi.utils import LimitingNursery, asynccontextmanager, open_limiting_nursery
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,8 @@
 import attr
 
 from matriisi.dataclasses.room import RoomMember
+from matriisi.event.base import RoomEvent
 from matriisi.identifier import Identifier
-from matriisi.robotics.event.base import RoomEvent
 
 __all__ = (
     "RoomMemberJoinedEvent",
