@@ -25,6 +25,8 @@ __all__ = (
     "MatrixRoomJoinRule",
     "MatrixEventRoomJoinRules",
     "MatrixEventRoomTopic",
+    "MatrixEventRoomHistoryVisibility",
+    "MatrixRoomRedactedEvent",
     "MatrixRelatesTo",
     "RelatesToRelation",
     "RELATION_KEYS",
@@ -323,3 +325,34 @@ class MatrixEventRoomTopic(MatrixHttpEventContent):
 
     #: The room's topic text.
     topic: str = attr.ib(kw_only=True)
+
+
+class HistoryVisibility(enum.Enum):
+    """
+    Enumeration of valid history visiblity values.
+    """
+
+    #: History is readable by anyone, on any server, no matter what.
+    WORLD_READABLE = "world_readable"
+
+    #: History is readable by all current members.
+    SHARED = "shared"
+
+    #: History is readable from the point a member is invited onwards, but not before. Events stop
+    #: being accessible when a member is neither joined nor invited.
+    INVITED = "invited"
+
+    #: History is accessible to newly joined members from the point that they joined. Events before
+    #: that point are not accessible, and events after a member is no longer joined are not
+    #: accessible.
+    JOINED = "joined"
+
+
+@attr.s(frozen=True, slots=True)
+class MatrixEventRoomHistoryVisibility(MatrixHttpEventContent):
+    """
+    Wrapper for content of the ``m.room.history_visibility`` event.
+    """
+
+    #: The visibility of historical events in this room.
+    visibility: HistoryVisibility = attr.ib(kw_only=True, converter=HistoryVisibility)

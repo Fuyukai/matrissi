@@ -33,6 +33,7 @@ from matriisi.http.httpevents import (
     MatrixEventRoomCanonicalAlias,
     MatrixEventRoomCreate,
     MatrixEventRoomCreatePreviousRoom,
+    MatrixEventRoomHistoryVisibility,
     MatrixEventRoomJoinRules,
     MatrixEventRoomMember,
     MatrixEventRoomMessage,
@@ -237,6 +238,10 @@ class MatrixHttp(object):
     def _parse_room_topic(content):
         return MatrixEventRoomTopic(topic=content["topic"])
 
+    @staticmethod
+    def _parse_history_visibility(content):
+        return MatrixEventRoomHistoryVisibility(visibility=content["history_visibility"])
+
     def _parse_matrix_event(self, type_: str, event_content) -> MatrixHttpEventContent:
         """
         Parses a Matrix event. This is a hardcoded, super-function.
@@ -266,6 +271,9 @@ class MatrixHttp(object):
 
         elif type_ == "m.room.name":
             evt = self._parse_room_name(event_content)
+
+        elif type_ == "m.room.history_visiblity":
+            evt = self._parse_history_visibility(event_content)
 
         else:
             content = MatrixUnknownEventContent(data=event_content)

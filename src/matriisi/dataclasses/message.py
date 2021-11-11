@@ -9,8 +9,8 @@ from matriisi.http import MatrixEventRoomMessage
 
 if TYPE_CHECKING:
     from matriisi.dataclasses.member import RoomMember
-    from matriisi.identifier import Identifier
     from matriisi.dataclasses.room import Room
+    from matriisi.identifier import Identifier
 
 
 @attr.s(frozen=True, slots=True)
