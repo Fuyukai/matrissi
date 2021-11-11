@@ -6,10 +6,10 @@ import attr
 
 from matriisi.dataclasses.base import EventWrapper
 from matriisi.http import MatrixEventRoomMessage
-from matriisi.identifier import Identifier
 
 if TYPE_CHECKING:
     from matriisi.dataclasses.member import RoomMember
+    from matriisi.identifier import Identifier
     from matriisi.dataclasses.room import Room
 
 
@@ -42,7 +42,6 @@ class Message(EventWrapper[MatrixEventRoomMessage]):
             **extra,
         )
 
-    @property
     def is_notice(self) -> bool:
         """
         :return: If this message is a notice message.

@@ -360,6 +360,7 @@ class Room(object):
         message_content: str,
         *,
         render_markdown: bool = True,
+        use_notice: bool = True,
         wait_for_sync: bool = False,
         **extra,
     ) -> Union[str, Message]:
@@ -367,16 +368,21 @@ class Room(object):
         Sends a text message to this room.
 
         :param message_content: The content of the message.
-        :param extra: Any extra data.
         :param render_markdown: If True, then ``message_content`` will be turned into HTML from
                                 Markdown.
+        :param use_notice: If True, then this will be an ``m.notice`` message (recommended).
         :param wait_for_sync: If True, waits for the next sync() to retrieve the full event returned
                               from the server. Otherwise, simply returns the event ID.
         :param extra: Any extra data to send in the event content.
         :return: The event ID or :class:`.Message`.
         """
 
-        body = {"msgtype": "m.text", "body": message_content, **extra}
+        if use_notice:
+            type = "m.notice"
+        else:
+            type = "m.text"
+
+        body = {"msgtype": type, "body": message_content, **extra}
 
         if render_markdown:
             html_body = markdown2.markdown(
@@ -404,6 +410,7 @@ class Room(object):
         message_content: str,
         *,
         render_markdown: bool = True,
+        use_notice: bool = True,
         wait_for_sync: bool = False,
         **extra,
     ):
@@ -414,17 +421,23 @@ class Room(object):
         :param message_content: The content of the message to replace.
         :param render_markdown: If True, then ``message_content`` will be turned into HTML from
                                 Markdown.
+        :param use_notice: If True, then this will be an ``m.notice`` message (recommended).
         :param wait_for_sync: If True, waits for the next sync() to retrieve the full event returned
                               from the server. Otherwise, simply returns the event ID.
         :param extra: Any extra data to send in the event content.
         """
 
+        if use_notice:
+            type = "m.notice"
+        else:
+            type = "m.text"
+
         body = {
             "body": f"* {message_content}",  # seems to be the standard edit format
-            "msgtype": "m.text",
+            "msgtype": type,
             "m.new_content": {
                 "body": message_content,
-                "msgtype": "m.text",
+                "msgtype": type,
             },
             "im.nheko.relations.v1.relations": [
                 {
