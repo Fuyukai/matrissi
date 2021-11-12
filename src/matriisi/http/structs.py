@@ -19,6 +19,7 @@ __all__ = (
     "MatrixLeftRoom",
     "MatrixRoomSummary",
     "MatrixRoomMessages",
+    "MatrixCapabilities",
 )
 
 from matriisi.http.httpevents import (
@@ -229,3 +230,30 @@ class MatrixRoomMessages(object):
 
     #: The state events for this chunk.
     state: List[MatrixRoomStateEvent] = attr.ib(factory=list)
+
+
+@attr.s(frozen=True, slots=True)
+class MatrixCapabilities(object):
+    """
+    Data class for returned capabilities.
+    """
+
+    #: The default room version, as created by the server.
+    default_room_version: str = attr.ib()
+
+    #: The available room versions.
+    available_versions: Mapping[str, str] = attr.ib()
+
+    #: If the password change capability is enabled.
+    can_change_password: bool = attr.ib()
+
+    # MSC3283 support
+    # > clients should behave as if they were present and set to true.
+    #: If users can change their display name.
+    can_change_displayname: bool = attr.ib(default=True)
+
+    #: If users can change their avatar.
+    can_change_avatar: bool = attr.ib(default=True)
+
+    #: If users can change their 3PIDs.
+    can_change_3pids: bool = attr.ib(default=True)

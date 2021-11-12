@@ -8,7 +8,7 @@ import trio
 
 from matriisi.event import Event
 from matriisi.event.bus import EventBus, open_event_bus
-from matriisi.http import MatrixHttp, create_http_client
+from matriisi.http import MatrixCapabilities, MatrixHttp, create_http_client
 from matriisi.identifier import Identifier
 from matriisi.state import MatrixState
 from matriisi.utils import asynccontextmanager
@@ -20,6 +20,8 @@ class RoboClient(object):
     """
     A client for a Matrix bot. This implements a high-level wrapper around the Matrix HTTP API.
     """
+
+    SUPPORTED_ROOM_VERSIONS = {"6", "7", "8", "9"}
 
     def __init__(self, http_client: MatrixHttp, event_bus: EventBus):
         """
@@ -37,14 +39,25 @@ class RoboClient(object):
 
         # these properties are set in run() usually.
         #: The UID of this client.
-        self.uid: Identifier = None
+        self.uid: Identifier = None  # type: ignore
+
+        #: The capabilities of the remote home server.
+        self.capabilities: MatrixCapabilities = None  # type: ignore
 
     async def run(self):
         """
         Runs the roboclient forever. This will synch messages from the server and dispatch them
         around.
         """
-        # todo: negotiate versions, capabilities
+        self.capabilities = await self.http_client.capabilities()
+
+        # we speak room versions 6 through 9
+        if not any(r in self.capabilities.available_versions for r in self.SUPPORTED_ROOM_VERSIONS):
+            raise ValueError(
+                "Server speaks an incompatible set of room versions\n"
+                f"Required: Any of {self.SUPPORTED_ROOM_VERSIONS}\n"
+                f"Got: {self.capabilities.available_versions}"
+            )
 
         whoami = await self.http_client.whoami()
         self.uid = whoami.user_id

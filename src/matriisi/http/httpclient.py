@@ -52,6 +52,7 @@ from matriisi.http.httpevents import (
     RelatesToRelation,
 )
 from matriisi.http.structs import (
+    MatrixCapabilities,
     MatrixInvitedRoom,
     MatrixJoinedRoom,
     MatrixPresence,
@@ -516,7 +517,6 @@ class MatrixHttp(object):
     ## HTTP Methods ##
 
     async def _check_login(self):
-        # this does exist
         await checkpoint()
 
         if self._authentication_token is None:
@@ -636,6 +636,8 @@ class MatrixHttp(object):
         """
         Checks who the owner of this token is.
         """
+        await self._check_login()
+
         result = await self.matrix_request("GET", "r0/account/whoami")
         return converter.structure(result, MatrixWhoami)
 
@@ -663,6 +665,26 @@ class MatrixHttp(object):
         access_token = resp["access_token"]
         self.set_auth_token(access_token)
         return resp["user_id"]
+
+    async def capabilities(self) -> MatrixCapabilities:
+        """
+        Gets the server supported feature set.
+        """
+
+        result = await self.matrix_request("GET", "r0/capabilities")
+        result = result["capabilities"]
+        kwargs_dict = {
+            "default_room_version": result["m.room_versions"]["default"],
+            "available_versions": result["m.room_versions"]["available"],
+            "can_change_password": result["m.change_password"]["enabled"],
+        }
+
+        if "m.set_displayname" in result:
+            kwargs_dict["can_change_displayname"] = result["m.set_displayname"]
+            kwargs_dict["can_change_avatar"] = result["m.set_avatar_url"]
+            kwargs_dict["can_change_3pids"] = result["m.3pid_changes"]
+
+        return MatrixCapabilities(**kwargs_dict)
 
     async def sync(
         self,
@@ -692,6 +714,8 @@ class MatrixHttp(object):
 
         .. _spec: https://spec.matrix.org/unstable/client-server-api/#get_matrixclientr0sync
         """
+        await self._check_login()
+
         params = {"full_state": full_state, "timeout": str(timeout)}
 
         if filter is not None:
