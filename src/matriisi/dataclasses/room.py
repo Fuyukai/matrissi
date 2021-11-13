@@ -29,7 +29,6 @@ from matriisi.http.httpevents import (
     MatrixEventRoomName,
     MatrixEventRoomTopic,
     MatrixHttpEventContent,
-    MatrixRoomBaseStateEvent,
     MatrixRoomEvent,
     MatrixRoomMemberMembership,
     MatrixRoomStateEvent,
@@ -41,40 +40,6 @@ T = TypeVar("T", bound=MatrixHttpEventContent)
 if TYPE_CHECKING:
     from matriisi.identifier import IDENTIFIER_TYPE
     from matriisi.roboclient import RoboClient
-
-
-# {
-#     "content": {
-#         "body": "* **four**",
-#         "format": "org.matrix.custom.html",
-#         "formatted_body": "* <strong>four</strong>",
-#         "im.nheko.relations.v1.relations": [
-#             {
-#                 "event_id": "$Sm1M2dmwDZ5_yl179mEZmm7ovI72EbCJoEJDjtZmGdI",
-#                 "rel_type": "m.replace"
-#             }
-#         ],
-#         "m.new_content": {
-#             "body": "**four**",
-#             "format": "org.matrix.custom.html",
-#             "formatted_body": "<strong>four</strong>",
-#             "msgtype": "m.text"
-#         },
-#         "m.relates_to": {
-#             "event_id": "$Sm1M2dmwDZ5_yl179mEZmm7ovI72EbCJoEJDjtZmGdI",
-#             "rel_type": "m.replace"
-#         },
-#         "msgtype": "m.text"
-#     },
-#     "event_id": "$FPuoE-AKvZDILyIJ9BqhCZbA8HshvpmeBAS3KTnPM0A",
-#     "origin_server_ts": 1636571392025,
-#     "sender": "@lura:veriny.tf",
-#     "type": "m.room.message",
-#     "unsigned": {
-#         "age": 130,
-#         "transaction_id": "mWZf8EZEVHbkyFDfKt51rufZ2EpGzg9Aa"
-#     }
-# }
 
 
 class Room(object):
@@ -137,23 +102,14 @@ class Room(object):
         event_type: str,
         state_key: str,
         content_type: Type[T] = None,
-    ) -> Optional[MatrixRoomBaseStateEvent[T]]:
+    ) -> Optional[MatrixRoomStateEvent[T]]:
         """
         Finds an event in the state events, using the ``event_type`` and ``state_key``.
         """
 
         subdict = self._state_events[event_type]
         if state_key is not None:
-            evt = subdict.get(state_key)
-            if not evt:
-                return None
-
-            return evt
-
-        # no state key, search by type
-        for event in subdict.values():
-            if isinstance(event.content, content_type):
-                return event
+            return subdict.get(state_key)
 
         return None
 
@@ -162,14 +118,14 @@ class Room(object):
         event_type: str,
         state_key: str = None,
         content_type: Type[T] = None,
-    ) -> Iterable[Union[MatrixRoomStateEvent[T]]]:
+    ) -> Iterable[MatrixRoomStateEvent[T]]:
         """
         Find all events matching the criteria.
 
         :param event_type: The ``type`` field of the events to find.
         :param state_key: The ``state_key`` field of the events to find.
         :param content_type: The type of the body for this event. Optional, for typing.
-        :return:
+        :return: An iterable of events matching the event type or state key.
         """
 
         subdict = self._state_events[event_type]
@@ -178,14 +134,11 @@ class Room(object):
                 yield v
             elif k == state_key:
                 yield v
-            elif isinstance(v, content_type):
-                yield v
 
     def _update_state(self, event: MatrixRoomStateEvent[Any]):
         """
         Updates the room state.
         """
-        # this should never happen
         self._last_known_event_id = event.event_id
 
         # skip state events
@@ -267,6 +220,17 @@ class Room(object):
         assert evt, "room is missing m.room.create state"
 
         return evt.content.m_federate
+
+    @cached_property
+    def room_version(self) -> str:
+        """
+        :return: The version of this room.
+        """
+
+        evt = self.find_event("m.room.create", "", MatrixEventRoomCreate)
+        assert evt, "room is missing m.room.create state"
+
+        return evt.content.room_version
 
     # not cached properties
     @property

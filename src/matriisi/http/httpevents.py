@@ -29,6 +29,7 @@ __all__ = (
     "MatrixRoomRedactedEvent",
     "MatrixRelatesTo",
     "RelatesToRelation",
+    "HistoryVisibility",
     "RELATION_KEYS",
     "CONTENT_TYPE",
     "REPLY_KEYS",
