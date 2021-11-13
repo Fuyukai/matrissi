@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncContextManager, Type
+from typing import TYPE_CHECKING, Any, AsyncContextManager, Optional, Type
 
 import trio
 
+from matriisi.dataclasses.room import Room
 from matriisi.event import Event
 from matriisi.event.bus import EventBus, open_event_bus
 from matriisi.http import MatrixCapabilities, MatrixHttp, create_http_client
 from matriisi.identifier import Identifier
 from matriisi.state import MatrixState
 from matriisi.utils import asynccontextmanager
+
+if TYPE_CHECKING:
+    from matriisi.identifier import IDENTIFIER_TYPE
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +123,40 @@ class RoboClient(object):
         """
 
         self._event_bus.register_any_handler(fn)
+
+    ## Global Functions ##
+
+    def get_room(self, room_id: IDENTIFIER_TYPE) -> Optional[Room]:
+        """
+        Gets a room.
+
+        :param room_id: The identifier for the room.
+        :return: A snapshot of the room, if it exists.
+        """
+
+        room = self.state.rooms.get(room_id)
+        if room:
+            return room.snapshot()
+
+    def find_room(self, room_id: IDENTIFIER_TYPE) -> Optional[Room]:
+        """
+        Finds a room, either by its identifier or its name.
+
+        .. warning::
+
+            Room names are not unique.
+
+        :param room_id: The identifier or name of the room.
+        :return: A snapshot of the room, if it exists.
+        """
+
+        room = self.get_room(room_id)
+        if room:
+            return room
+
+        for room in self.state.rooms.values():
+            if room.name == room_id:
+                return room.snapshot()
 
 
 @asynccontextmanager
